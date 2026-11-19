@@ -2,6 +2,9 @@ name: Build Study Tracker APK
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - main
 
 permissions:
   contents: read
@@ -11,32 +14,55 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout source
+      - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Set up Java
+      - name: Setup Java
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
 
-      - name: Set up Android SDK
+      - name: Setup Android SDK
         uses: android-actions/setup-android@v4
 
-      - name: Install Android platform
+      - name: Install Android SDK
         run: sdkmanager 'platforms;android-35' 'build-tools;35.0.0'
 
-      - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: '8.7'
+      - name: Extract ZIP if needed
+        run: |
+          if ! find . -name settings.gradle -o -name settings.gradle.kts | grep -q .; then
+            ZIP_FILE=$(find . -maxdepth 3 -name 'StudyTrackerAndroid_Joba_Default_Icon.zip' -print -quit)
 
-      - name: Build debug APK
-        run: gradle --no-daemon assembleDebug
+            if [ -n "$ZIP_FILE" ]; then
+              mkdir -p extracted
+              unzip -q "$ZIP_FILE" -d extracted
+            fi
+          fi
+
+      - name: Locate Android Project
+        run: |
+          PROJECT_FILE=$(find . -type f \( -name settings.gradle -o -name settings.gradle.kts \) \
+            -not -path '*/.gradle/*' -print -quit)
+
+          if [ -z "$PROJECT_FILE" ]; then
+            echo "ERROR: settings.gradle not found!"
+            exit 1
+          fi
+
+          PROJECT_DIR=$(dirname "$PROJECT_FILE")
+          echo "PROJECT_DIR=$PROJECT_DIR" >> $GITHUB_ENV
+
+          echo "Found project: $PROJECT_DIR"
+
+      - name: Build APK
+        run: |
+          cd "$PROJECT_DIR"
+          gradle --no-daemon assembleDebug
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: Study-Tracker-debug-APK
-          path: app/build/outputs/apk/debug/app-debug.apk
+          name: Study-Tracker-APK
+          path: ${{ env.PROJECT_DIR }}/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
